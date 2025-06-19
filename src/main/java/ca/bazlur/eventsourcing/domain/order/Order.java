@@ -24,6 +24,9 @@ public class Order extends AggregateRoot {
     }
 
     public static Order create(String orderId, String customerId, String correlationId) {
+        if (customerId == null || customerId.trim().isEmpty()) {
+            throw new IllegalArgumentException("Customer ID is required");
+        }
         Order order = new Order(orderId);
         order.applyEvent(new OrderCreatedEvent(orderId, order.version + 1, customerId, correlationId, null));
         return order;
