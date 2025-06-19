@@ -1,9 +1,11 @@
 package ca.bazlur.eventsourcing.domain.order.events;
 
 import ca.bazlur.eventsourcing.core.DomainEvent;
+import lombok.Getter;
 
 import java.math.BigDecimal;
 
+@Getter
 public class OrderItemAddedEvent extends DomainEvent {
     private final String productId;
     private final String productName;
@@ -18,12 +20,7 @@ public class OrderItemAddedEvent extends DomainEvent {
         this.quantity = quantity;
         this.price = price;
     }
-    
-    public String getProductId() { return productId; }
-    public String getProductName() { return productName; }
-    public int getQuantity() { return quantity; }
-    public BigDecimal getPrice() { return price; }
-    
+
     @Override
     public String getEventType() {
         return "OrderItemAdded";

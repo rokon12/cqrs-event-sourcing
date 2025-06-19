@@ -1,7 +1,9 @@
 package ca.bazlur.eventsourcing.domain.order.events;
 
 import ca.bazlur.eventsourcing.core.DomainEvent;
+import lombok.Getter;
 
+@Getter
 public class OrderCreatedEvent extends DomainEvent {
     private final String customerId;
     
@@ -9,9 +11,7 @@ public class OrderCreatedEvent extends DomainEvent {
         super(aggregateId, version, correlationId, causationId);
         this.customerId = customerId;
     }
-    
-    public String getCustomerId() { return customerId; }
-    
+
     @Override
     public String getEventType() {
         return "OrderCreated";

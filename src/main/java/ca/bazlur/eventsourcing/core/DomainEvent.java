@@ -1,10 +1,12 @@
 package ca.bazlur.eventsourcing.core;
 
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import lombok.Getter;
 
 import java.time.Instant;
 import java.util.UUID;
 
+@Getter
 @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, property = "@type")
 public abstract class DomainEvent {
     private final String eventId = UUID.randomUUID().toString();
@@ -20,13 +22,6 @@ public abstract class DomainEvent {
         this.correlationId = correlationId;
         this.causationId = causationId;
     }
-    
-    public String getEventId() { return eventId; }
-    public Instant getTimestamp() { return timestamp; }
-    public String getAggregateId() { return aggregateId; }
-    public long getVersion() { return version; }
-    public String getCorrelationId() { return correlationId; }
-    public String getCausationId() { return causationId; }
-    
+
     public abstract String getEventType();
 }

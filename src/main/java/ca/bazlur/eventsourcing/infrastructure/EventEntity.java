@@ -1,15 +1,20 @@
 package ca.bazlur.eventsourcing.infrastructure;
 
 import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 
+@Setter
+@Getter
 @Entity
 @Table(name = "events")
 public class EventEntity {
-    
+
+    // Getters and setters
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -53,32 +58,5 @@ public class EventEntity {
         this.correlationId = correlationId;
         this.causationId = causationId;
     }
-    
-    // Getters and setters
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    
-    public String getEventId() { return eventId; }
-    public void setEventId(String eventId) { this.eventId = eventId; }
-    
-    public String getStreamId() { return streamId; }
-    public void setStreamId(String streamId) { this.streamId = streamId; }
-    
-    public String getEventType() { return eventType; }
-    public void setEventType(String eventType) { this.eventType = eventType; }
-    
-    public String getEventData() { return eventData; }
-    public void setEventData(String eventData) { this.eventData = eventData; }
-    
-    public Long getVersion() { return version; }
-    public void setVersion(Long version) { this.version = version; }
-    
-    public Instant getTimestamp() { return timestamp; }
-    public void setTimestamp(Instant timestamp) { this.timestamp = timestamp; }
-    
-    public String getCorrelationId() { return correlationId; }
-    public void setCorrelationId(String correlationId) { this.correlationId = correlationId; }
-    
-    public String getCausationId() { return causationId; }
-    public void setCausationId(String causationId) { this.causationId = causationId; }
+
 }
