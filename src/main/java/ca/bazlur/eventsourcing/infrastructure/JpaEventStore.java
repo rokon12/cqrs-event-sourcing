@@ -2,6 +2,7 @@ package ca.bazlur.eventsourcing.infrastructure;
 
 import ca.bazlur.eventsourcing.core.DomainEvent;
 import ca.bazlur.eventsourcing.core.EventStore;
+import ca.bazlur.eventsourcing.core.EventStoreException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -96,20 +97,45 @@ public class JpaEventStore implements EventStore {
 
     @Override
     public List<DomainEvent> getAllEvents() {
+        return getAllEvents(0, Integer.MAX_VALUE);
+    }
+
+    @Override
+    public List<DomainEvent> getAllEvents(int offset, int limit) {
+        if (offset < 0) {
+            throw new IllegalArgumentException("Offset cannot be negative");
+        }
+        if (limit <= 0) {
+            throw new IllegalArgumentException("Limit must be greater than 0");
+        }
+        if (limit > 1000) {
+            log.warn("Requested limit {} is too large, limiting to 1000", limit);
+            limit = 1000;
+        }
+
         try {
             TypedQuery<EventEntity> query = entityManager.createQuery(
                     "SELECT e FROM EventEntity e ORDER BY e.timestamp ASC, e.version ASC",
                     EventEntity.class
             );
+            query.setFirstResult(offset);
+            query.setMaxResults(limit);
 
             List<EventEntity> entities = query.getResultList();
 
-            return entities.stream()
+            var events = entities.stream()
                     .map(this::deserializeEvent)
                     .toList();
 
+            log.debug("Loaded {} events with offset {} and limit {}", events.size(), offset, limit);
+            return events;
+
+        } catch (jakarta.persistence.PersistenceException e) {
+            log.error("Database error while loading events with offset {} and limit {}", offset, limit, e);
+            throw new EventStoreException("Database error while loading events", e);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to load all events", e);
+            log.error("Failed to load events with offset {} and limit {}", offset, limit, e);
+            throw new EventStoreException("Failed to load events", e);
         }
     }
 

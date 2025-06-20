@@ -12,5 +12,7 @@ public interface EventStore {
 
     List<DomainEvent> getAllEvents();
 
+    List<DomainEvent> getAllEvents(int offset, int limit);
+
     List<DomainEvent> getAllEvents(long fromVersion);
 }
