@@ -1,0 +1,90 @@
+### Environment variables
+@baseUrl = http://localhost:8080/api
+@contentType = application/json
+
+### Create a new order
+POST {{baseUrl}}/orders
+Content-Type: {{contentType}}
+
+{
+  "customerId": "customer-123"
+}
+
+> {%
+    client.test("Order created successfully", function() {
+        client.assert(response.status === 201, "Response status is not 201");
+        client.assert(response.body.orderId !== null, "Order ID is missing");
+        client.assert(response.body.customerId === "customer-123", "Customer ID mismatch");
+        client.assert(response.body.status === "DRAFT", "Status should be DRAFT");
+        client.global.set("orderId", response.body.orderId);
+    });
+%}
+
+### Get order by ID
+GET {{baseUrl}}/orders/{{orderId}}
+Accept: {{contentType}}
+
+> {%
+    client.test("Order retrieved successfully", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+        client.assert(response.body.orderId === client.global.get("orderId"), "Order ID mismatch");
+    });
+%}
+
+### Get all orders
+GET {{baseUrl}}/orders
+Accept: {{contentType}}
+
+> {%
+    client.test("Orders list retrieved", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+        client.assert(Array.isArray(response.body), "Response should be an array");
+    });
+%}
+
+### Get orders by customer
+GET {{baseUrl}}/orders?customerId=customer-123
+Accept: {{contentType}}
+
+> {%
+    client.test("Customer orders retrieved", function() {
+        client.assert(response.status === 200, "Response status is not 200");
+        client.assert(Array.isArray(response.body), "Response should be an array");
+        if (response.body.length > 0) {
+            client.assert(response.body[0].customerId === "customer-123", "Customer ID mismatch");
+        }
+    });
+%}
+
+### Create order with invalid data (missing customerId)
+POST {{baseUrl}}/orders
+Content-Type: {{contentType}}
+
+{}
+
+> {%
+    client.test("Invalid order handled correctly", function() {
+        client.assert(response.status === 400, "Response status is not 400");
+        client.assert(response.body.code === "VALIDATION_ERROR", "Error code mismatch");
+    });
+%}
+
+### Get non-existent order
+GET {{baseUrl}}/orders/non-existent-id
+Accept: {{contentType}}
+
+> {%
+    client.test("Non-existent order handled correctly", function() {
+        client.assert(response.status === 404, "Response status is not 404");
+        client.assert(response.body.code === "ORDER_NOT_FOUND", "Error code mismatch");
+    });
+%}
+
+### Usage Instructions:
+# 1. Open this file in IntelliJ IDEA
+# 2. Click the "Run All Requests" button or use individual "Run" links
+# 3. View request/response details in the "Run" tool window
+# 4. Check test results in the "Test" tab
+#
+# Note: The requests are designed to run in sequence, with later requests
+# using the orderId from the first create order request.

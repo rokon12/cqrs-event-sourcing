@@ -73,7 +73,7 @@ public class OrderResource {
             log.warn("Schema validation failed while creating order: {}", e.getMessage());
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(new ErrorResponse(
-                            "SCHEMA_VALIDATION_ERROR",
+                            "VALIDATION_ERROR",
                             "Invalid event schema: " + e.getMessage(),
                             correlationId
                     ))

@@ -218,7 +218,7 @@ class OrderResourceTest {
         // Then
         assertEquals(Response.Status.BAD_REQUEST.getStatusCode(), response.getStatus());
         var errorResponse = (ErrorResponse) response.getEntity();
-        assertEquals("SCHEMA_VALIDATION_ERROR", errorResponse.code());
+        assertEquals("VALIDATION_ERROR", errorResponse.code());
         assertTrue(errorResponse.message().contains("Invalid event schema"));
     }
 
