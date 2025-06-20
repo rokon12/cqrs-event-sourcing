@@ -3,13 +3,16 @@ package ca.bazlur.eventsourcing.api;
 import ca.bazlur.eventsourcing.api.dto.CreateOrderRequest;
 import ca.bazlur.eventsourcing.api.dto.ErrorResponse;
 import ca.bazlur.eventsourcing.api.dto.OrderResponse;
+import ca.bazlur.eventsourcing.core.EventSchemaException;
 import ca.bazlur.eventsourcing.domain.order.Order;
 import ca.bazlur.eventsourcing.domain.order.OrderStatus;
 import ca.bazlur.eventsourcing.infrastructure.JpaEventStore;
 import ca.bazlur.eventsourcing.projections.OrderProjection;
 import ca.bazlur.eventsourcing.projections.OrderProjectionModel;
 import io.opentelemetry.instrumentation.annotations.WithSpan;
+import jakarta.validation.ConstraintViolation;
 import jakarta.validation.Valid;
+import jakarta.validation.ConstraintViolationException;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
@@ -65,6 +68,30 @@ public class OrderResource {
 
             log.info("Created order: {} for customer: {}", orderId, request.customerId());
             return Response.created(location).entity(response).build();
+
+        } catch (EventSchemaException e) {
+            log.warn("Schema validation failed while creating order: {}", e.getMessage());
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(new ErrorResponse(
+                            "SCHEMA_VALIDATION_ERROR",
+                            "Invalid event schema: " + e.getMessage(),
+                            correlationId
+                    ))
+                    .build();
+
+        } catch (ConstraintViolationException e) {
+            var message = e.getConstraintViolations().stream()
+                    .map(ConstraintViolation::getMessage)
+                    .findFirst()
+                    .orElse("Validation failed");
+            log.warn("Validation failed while creating order: {}", message);
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(new ErrorResponse(
+                            "VALIDATION_ERROR",
+                            message,
+                            correlationId
+                    ))
+                    .build();
 
         } catch (IllegalArgumentException e) {
             log.warn("Invalid request while creating order: {}", e.getMessage());

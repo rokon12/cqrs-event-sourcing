@@ -15,13 +15,61 @@ public abstract class DomainEvent {
     private final long version;
     private final String correlationId;
     private final String causationId;
-    
+    private final int schemaVersion;
+
     protected DomainEvent(String aggregateId, long version, String correlationId, String causationId) {
         this.aggregateId = aggregateId;
         this.version = version;
         this.correlationId = correlationId;
         this.causationId = causationId;
+
+        var annotation = this.getClass().getAnnotation(EventSchemaVersion.class);
+        if (annotation == null) {
+            throw new EventSchemaException("Event class " + this.getClass().getName() 
+                + " must be annotated with @EventSchemaVersion");
+        }
+        this.schemaVersion = annotation.value();
     }
 
-    public abstract String getEventType();
+    /**
+     * Gets the event type name. By default, returns the class name without the "Event" suffix.
+     * Override this method if you need a different naming convention.
+     *
+     * @return the event type name
+     */
+    public String getEventType() {
+        return this.getClass().getSimpleName().replaceAll("Event$", "");
+    }
+
+    /**
+     * Evolve this event to the target schema version.
+     * Override this method to provide custom evolution logic.
+     *
+     * @param targetVersion the target schema version
+     * @return evolved event instance
+     * @throws EventSchemaException if evolution to target version is not supported
+     */
+    public DomainEvent evolve(int targetVersion) {
+        if (targetVersion == this.schemaVersion) {
+            return this;
+        }
+        throw new EventSchemaException(String.format(
+            "Evolution from version %d to %d is not supported for event type %s",
+            this.schemaVersion, targetVersion, getEventType()));
+    }
+
+    /**
+     * Check if this event can be evolved to the target schema version.
+     *
+     * @param targetVersion the target schema version
+     * @return true if evolution is supported, false otherwise
+     */
+    public boolean canEvolve(int targetVersion) {
+        try {
+            evolve(targetVersion);
+            return true;
+        } catch (EventSchemaException e) {
+            return false;
+        }
+    }
 }

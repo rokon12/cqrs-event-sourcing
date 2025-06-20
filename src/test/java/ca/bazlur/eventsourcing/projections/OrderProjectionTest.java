@@ -78,7 +78,13 @@ class OrderProjectionTest {
         String correlationId = UUID.randomUUID().toString();
 
         OrderCreatedEvent createEvent = new OrderCreatedEvent(
-                orderId, 1L, customerId, correlationId, null
+                orderId,
+                1L,
+                customerId,
+                "REGULAR",
+                BigDecimal.ZERO,
+                correlationId,
+                null
         );
         orderProjection.handle(createEvent);
 
@@ -415,7 +421,13 @@ class OrderProjectionTest {
 
             // Create order
             orderProjection.handle(new OrderCreatedEvent(
-                orderId, 1L, customerId, correlationId, null
+                orderId,
+                1L,
+                customerId,
+                "REGULAR",
+                BigDecimal.ZERO,
+                correlationId,
+                null
             ));
 
             // Add item to order

@@ -1,6 +1,8 @@
 package ca.bazlur.eventsourcing.infrastructure;
 
 import ca.bazlur.eventsourcing.core.DomainEvent;
+import ca.bazlur.eventsourcing.core.EventSchemaException;
+import ca.bazlur.eventsourcing.core.EventSchemaManager;
 import ca.bazlur.eventsourcing.core.EventStore;
 import ca.bazlur.eventsourcing.core.EventStoreException;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -22,33 +24,54 @@ public class JpaEventStore implements EventStore {
 
     private final EntityManager entityManager;
     private final ObjectMapper objectMapper;
+    private final EventSchemaManager schemaManager;
 
     @Inject
-    public JpaEventStore(EntityManager entityManager, ObjectMapper objectMapper) {
+    public JpaEventStore(
+        EntityManager entityManager,
+        ObjectMapper objectMapper,
+        EventSchemaManager schemaManager
+    ) {
         this.entityManager = entityManager;
         this.objectMapper = objectMapper;
+        this.schemaManager = schemaManager;
     }
 
     @Transactional
     public void appendEvents(String streamId, List<DomainEvent> events, long expectedVersion) {
-        validateOptimisticConcurrency(streamId, expectedVersion);
+        try {
+            // Validate optimistic concurrency
+            validateOptimisticConcurrency(streamId, expectedVersion);
 
-        var entities = events.stream()
-                .map(event -> new EventEntity(
-                        event.getEventId(),
-                        streamId,
-                        event.getEventType(),
-                        toJson(event),
-                        event.getVersion(),
-                        event.getTimestamp(),
-                        event.getCorrelationId(),
-                        event.getCausationId()))
-                .toList();
+            // Validate event schemas
+            for (DomainEvent event : events) {
+                schemaManager.validateEvent(event);
+            }
 
-        entities.forEach(entityManager::persist);
-        entityManager.flush();
+            // Convert and store events
+            var entities = events.stream()
+                    .map(event -> new EventEntity(
+                            event.getEventId(),
+                            streamId,
+                            event.getEventType(),
+                            toJson(event),
+                            event.getVersion(),
+                            event.getTimestamp(),
+                            event.getCorrelationId(),
+                            event.getCausationId()))
+                    .toList();
 
-        log.debug("Appended {} events to stream {}", events.size(), streamId);
+            entities.forEach(entityManager::persist);
+            entityManager.flush();
+
+            log.debug("Appended {} events to stream {}", events.size(), streamId);
+        } catch (EventSchemaException e) {
+            log.error("Schema validation failed for events in stream {}: {}", streamId, e.getMessage());
+            throw new EventStoreException("Schema validation failed", e);
+        } catch (Exception e) {
+            log.error("Failed to append events to stream {}: {}", streamId, e.getMessage());
+            throw new EventStoreException("Failed to append events to stream: " + streamId, e);
+        }
     }
 
     @Override

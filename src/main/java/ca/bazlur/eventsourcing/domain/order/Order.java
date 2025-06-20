@@ -28,7 +28,43 @@ public class Order extends AggregateRoot {
             throw new IllegalArgumentException("Customer ID is required");
         }
         Order order = new Order(orderId);
-        order.applyEvent(new OrderCreatedEvent(orderId, order.version + 1, customerId, correlationId, null));
+        order.applyEvent(new OrderCreatedEvent(
+            orderId,
+            order.version + 1,
+            customerId,
+            correlationId,
+            null
+        ));
+        return order;
+    }
+
+    public static Order createWithCustomerDetails(
+        String orderId,
+        String customerId,
+        String customerType,
+        BigDecimal creditLimit,
+        String correlationId
+    ) {
+        if (customerId == null || customerId.trim().isEmpty()) {
+            throw new IllegalArgumentException("Customer ID is required");
+        }
+        if (customerType == null || customerType.trim().isEmpty()) {
+            throw new IllegalArgumentException("Customer type is required");
+        }
+        if (creditLimit == null) {
+            throw new IllegalArgumentException("Credit limit is required");
+        }
+
+        Order order = new Order(orderId);
+        order.applyEvent(new OrderCreatedEvent(
+            orderId,
+            order.version + 1,
+            customerId,
+            customerType,
+            creditLimit,
+            correlationId,
+            null
+        ));
         return order;
     }
 
