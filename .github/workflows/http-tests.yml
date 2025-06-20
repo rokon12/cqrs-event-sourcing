@@ -43,14 +43,31 @@ jobs:
     - name: Build with Maven
       run: mvn -B package --file pom.xml
 
+    - name: Install PostgreSQL client
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y postgresql-client
+
     - name: Run Tests
       env:
         QUARKUS_DATASOURCE_USERNAME: postgres
         QUARKUS_DATASOURCE_PASSWORD: postgres
         QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
+        QUARKUS_LOG_CATEGORY_CA_BAZLUR_EVENTSOURCING_LEVEL: DEBUG
+        QUARKUS_LOG_CATEGORY_IO_QUARKUS_DATASOURCE_LEVEL: DEBUG
+        QUARKUS_LOG_CATEGORY_ORG_HIBERNATE_LEVEL: DEBUG
+        QUARKUS_PROFILE: test
       run: |
-        echo "Starting application in dev mode..."
-        mvn quarkus:dev -Dquarkus.log.level=INFO &
+        # Wait for PostgreSQL to be ready
+        echo "Waiting for PostgreSQL to be ready..."
+        timeout 20 bash -c 'until psql "postgresql://postgres:postgres@localhost:5432/testdb" -c "\q" > /dev/null 2>&1; do sleep 1; done'
+        echo "PostgreSQL is ready"
+
+        # Verify database connection
+        echo "Verifying database connection..."
+        psql "postgresql://postgres:postgres@localhost:5432/testdb" -c "\dt" || exit 1
+        echo "Starting application in test mode..."
+        mvn quarkus:dev -Dquarkus.profile=test -Dquarkus.log.level=DEBUG &
         APP_PID=$!
 
         # Wait for the application to be ready
@@ -58,6 +75,7 @@ jobs:
         timeout 60 bash -c '
           until curl -s http://localhost:8080/q/health/ready > /dev/null; do
             echo "Checking application health..."
+            curl -s http://localhost:8080/q/health || true
             sleep 2
           done
         '
@@ -65,8 +83,21 @@ jobs:
 
         # Run the tests with detailed output
         echo "Running HTTP tests..."
-        mvn test -Dtest=OrderResourceHttpTest -Dsurefire.reportFormat=plain -Dquarkus.test.continuous-testing=disabled -Dmaven.test.failure.ignore=true
+        mvn test -Dtest=OrderResourceHttpTest \
+            -Dquarkus.profile=test \
+            -Dsurefire.reportFormat=plain \
+            -Dquarkus.test.continuous-testing=disabled \
+            -Dmaven.test.failure.ignore=true \
+            -Dquarkus.log.level=DEBUG \
+            -Dquarkus.log.category."ca.bazlur.eventsourcing".level=DEBUG \
+            -Dquarkus.log.category."io.quarkus.datasource".level=DEBUG
         TEST_EXIT_CODE=$?
+
+        # Display application logs if tests failed
+        if [ $TEST_EXIT_CODE -ne 0 ]; then
+            echo "Tests failed. Last 100 lines of application log:"
+            tail -n 100 target/quarkus.log || true
+        fi
 
         # Display test summary
         echo "Test Summary:"
