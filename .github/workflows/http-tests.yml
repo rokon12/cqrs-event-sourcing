@@ -1,0 +1,90 @@
+name: HTTP Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  http-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:latest
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up JDK
+      uses: actions/setup-java@v3
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Build with Maven
+      run: mvn -B package --file pom.xml
+
+    - name: Run Tests
+      env:
+        QUARKUS_DATASOURCE_USERNAME: postgres
+        QUARKUS_DATASOURCE_PASSWORD: postgres
+        QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://localhost:5432/testdb
+      run: |
+        echo "Starting application in dev mode..."
+        mvn quarkus:dev -Dquarkus.log.level=INFO &
+        APP_PID=$!
+
+        # Wait for the application to be ready
+        echo "Waiting for application to start..."
+        timeout 60 bash -c '
+          until curl -s http://localhost:8080/q/health/ready > /dev/null; do
+            echo "Checking application health..."
+            sleep 2
+          done
+        '
+        echo "Application is ready"
+
+        # Run the tests with detailed output
+        echo "Running HTTP tests..."
+        mvn test -Dtest=OrderResourceHttpTest -Dsurefire.reportFormat=plain -Dquarkus.test.continuous-testing=disabled -Dmaven.test.failure.ignore=true
+        TEST_EXIT_CODE=$?
+
+        # Display test summary
+        echo "Test Summary:"
+        find target/surefire-reports -name "TEST-*.xml" -exec grep -h "<testcase" {} \; | wc -l | xargs echo "Total tests:"
+        find target/surefire-reports -name "TEST-*.xml" -exec grep -h "<failure" {} \; | wc -l | xargs echo "Failed tests:"
+
+        # Stop the application
+        echo "Stopping application..."
+        kill $APP_PID || true
+
+        # Exit with the test exit code
+        exit $TEST_EXIT_CODE
+
+    - name: Publish Test Report
+      if: always()
+      uses: mikepenz/action-junit-report@v3
+      with:
+        report_paths: '**/target/surefire-reports/TEST-*.xml'
+        fail_on_failure: true
+        require_tests: true
+        include_passed: true
