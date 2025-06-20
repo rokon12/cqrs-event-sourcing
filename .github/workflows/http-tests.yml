@@ -83,7 +83,7 @@ jobs:
 
         # Run the tests with detailed output
         echo "Running HTTP tests..."
-        mvn test -Dtest=OrderResourceHttpTest \
+        mvn test -Dtest=OrderResourceIntegrationTest \
             -Dquarkus.profile=test \
             -Dsurefire.reportFormat=plain \
             -Dquarkus.test.continuous-testing=disabled \
