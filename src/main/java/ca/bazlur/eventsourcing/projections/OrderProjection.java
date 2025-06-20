@@ -2,6 +2,7 @@ package ca.bazlur.eventsourcing.projections;
 
 import ca.bazlur.eventsourcing.core.DomainEvent;
 import ca.bazlur.eventsourcing.core.Projection;
+import ca.bazlur.eventsourcing.core.ProjectionRebuildException;
 import ca.bazlur.eventsourcing.domain.order.OrderStatus;
 import ca.bazlur.eventsourcing.domain.order.events.OrderCreatedEvent;
 import ca.bazlur.eventsourcing.domain.order.events.OrderItemAddedEvent;
@@ -72,6 +73,7 @@ public class OrderProjection implements Projection<OrderProjectionModel> {
     }
 
     @Override
+    @Transactional
     public void handle(DomainEvent event) {
         try {
             switch (event) {
@@ -82,11 +84,12 @@ public class OrderProjection implements Projection<OrderProjectionModel> {
         } catch (Exception e) {
             log.error("Error handling event: {} for order: {}", 
                 event.getClass().getSimpleName(), event.getAggregateId(), e);
+            throw new ProjectionRebuildException("Failed to handle event: " + event.getClass().getSimpleName(), e);
         }
     }
 
     @Transactional
-    private void handle(OrderCreatedEvent event) {
+    protected void handle(OrderCreatedEvent event) {
         var model = new OrderProjectionModel();
         model.setId(event.getAggregateId());
         model.setCustomerId(event.getCustomerId());
@@ -103,7 +106,7 @@ public class OrderProjection implements Projection<OrderProjectionModel> {
     }
 
     @Transactional
-    private void handle(OrderItemAddedEvent event) {
+    protected void handle(OrderItemAddedEvent event) {
         var model = getById(event.getAggregateId());
         if (model == null) {
             log.warn("Order not found for OrderItemAddedEvent: {}", event.getAggregateId());
@@ -174,7 +177,9 @@ public class OrderProjection implements Projection<OrderProjectionModel> {
             readLock.unlock();
         }
 
-        var models = repository.findByCustomerId(customerId).stream()
+        var pageRequest = new PageRequest(0, Integer.MAX_VALUE); // Get all records
+        var page = repository.findByCustomerId(customerId, pageRequest);
+        var models = page.content().stream()
             .map(OrderProjectionEntity::toModel)
             .toList();
 
@@ -183,7 +188,9 @@ public class OrderProjection implements Projection<OrderProjectionModel> {
             try {
                 writeLock.lock();
                 customerCache.put(customerId, new ArrayList<>(models));
-                models.forEach(model -> cache.put(model.getId(), model));
+                for (var model : models) {
+                    cache.put(model.getId(), model);
+                }
                 log.debug("Cache updated for customer orders: {}", customerId);
             } finally {
                 writeLock.unlock();
@@ -205,7 +212,7 @@ public class OrderProjection implements Projection<OrderProjectionModel> {
             readLock.unlock();
         }
 
-        var models = repository.findAll().stream()
+        var models = repository.listAll().stream()
             .map(OrderProjectionEntity::toModel)
             .toList();
 
@@ -260,7 +267,7 @@ public class OrderProjection implements Projection<OrderProjectionModel> {
     @Override
     @Transactional
     public void reset() {
-        repository.deleteAll();
+        repository.deleteAllWithItems();
         invalidateCache();
         log.info("Order projection reset");
     }

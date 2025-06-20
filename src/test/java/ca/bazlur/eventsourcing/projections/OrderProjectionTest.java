@@ -28,7 +28,7 @@ class OrderProjectionTest {
     @BeforeEach
     @Transactional
     void setUp() {
-        repository.deleteAll();
+        orderProjection.reset();
     }
 
     @Test
@@ -213,7 +213,7 @@ class OrderProjectionTest {
         assertNull(orderProjection.getById(orderId));
 
         // Verify no order was created
-        var allOrders = repository.findAll();
+        var allOrders = repository.listAll();
         assertTrue(allOrders.isEmpty());
     }
 
@@ -377,7 +377,7 @@ class OrderProjectionTest {
         orderProjection.reset();
 
         // Assert - Verify database state
-        var allOrders = repository.findAll();
+        var allOrders = repository.listAll();
         assertTrue(allOrders.isEmpty());
 
         // Verify cache is cleared
@@ -456,7 +456,9 @@ class OrderProjectionTest {
         }
 
         // Verify database state matches cache
-        var dbOrders = repository.findByCustomerId(customerId);
+        var pageRequest = new PageRequest(0, Integer.MAX_VALUE); // Get all records
+        var dbOrdersPage = repository.findByCustomerId(customerId, pageRequest);
+        var dbOrders = dbOrdersPage.content();
         assertEquals(numberOfOrders, dbOrders.size());
         assertTrue(dbOrders.stream()
             .map(OrderProjectionEntity::getId)

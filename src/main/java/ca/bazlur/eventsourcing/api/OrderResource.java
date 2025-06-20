@@ -51,7 +51,11 @@ public class OrderResource {
             log.info("Creating order for customer: {}", request.customerId());
 
             var order = Order.create(orderId, request.customerId(), correlationId);
-            eventStore.appendEvents(orderId, order.getUncommittedEvents(), 0);
+            var events = order.getUncommittedEvents();
+            eventStore.appendEvents(orderId, events, 0);
+
+            // Update projection with new events
+            events.forEach(orderProjection::handle);
 
             var location = uriInfo.getAbsolutePathBuilder()
                     .path(orderId)
@@ -90,7 +94,7 @@ public class OrderResource {
     public Response getOrder(@PathParam("orderId") String orderId) {
         try {
             var orderProjection = this.orderProjection.getById(orderId);
-            
+
             if (orderProjection == null) {
                 return Response.status(Response.Status.NOT_FOUND)
                         .entity(new ErrorResponse(
@@ -121,7 +125,7 @@ public class OrderResource {
     public Response getOrders(@QueryParam("customerId") String customerId) {
         try {
             List<OrderProjectionModel> orders;
-            
+
             if (customerId != null && !customerId.trim().isEmpty()) {
                 orders = orderProjection.getByCustomerId(customerId);
             } else {
@@ -155,6 +159,3 @@ public class OrderResource {
         );
     }
 }
-
-
-
