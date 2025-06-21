@@ -1,10 +1,7 @@
 package ca.bazlur.eventsourcing.infrastructure;
 
-import ca.bazlur.eventsourcing.core.DomainEvent;
-import ca.bazlur.eventsourcing.core.EventSchemaException;
-import ca.bazlur.eventsourcing.core.EventSchemaManager;
-import ca.bazlur.eventsourcing.core.EventStore;
-import ca.bazlur.eventsourcing.core.EventStoreException;
+import ca.bazlur.eventsourcing.core.*;
+import ca.bazlur.eventsourcing.infrastructure.snapshot.SnapshotService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -16,25 +13,29 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Optional;
 
 @ApplicationScoped
-public class JpaEventStore implements EventStore {
+public class JpaEventStore implements SnapshotEventStore {
 
     private static final Logger log = LoggerFactory.getLogger(JpaEventStore.class);
 
     private final EntityManager entityManager;
     private final ObjectMapper objectMapper;
     private final EventSchemaManager schemaManager;
+    private final SnapshotService snapshotService;
 
     @Inject
     public JpaEventStore(
-        EntityManager entityManager,
-        ObjectMapper objectMapper,
-        EventSchemaManager schemaManager
+            EntityManager entityManager,
+            ObjectMapper objectMapper,
+            EventSchemaManager schemaManager,
+            SnapshotService snapshotService
     ) {
         this.entityManager = entityManager;
         this.objectMapper = objectMapper;
         this.schemaManager = schemaManager;
+        this.snapshotService = snapshotService;
     }
 
     @Transactional
@@ -64,6 +65,9 @@ public class JpaEventStore implements EventStore {
             entities.forEach(entityManager::persist);
             entityManager.flush();
 
+            // After successfully appending events, check if we need to create a snapshot
+            recordEventsAndManageSnapshot(streamId, events);
+
             log.debug("Appended {} events to stream {}", events.size(), streamId);
         } catch (EventSchemaException e) {
             log.error("Schema validation failed for events in stream {}: {}", streamId, e.getMessage());
@@ -71,6 +75,50 @@ public class JpaEventStore implements EventStore {
         } catch (Exception e) {
             log.error("Failed to append events to stream {}: {}", streamId, e.getMessage());
             throw new EventStoreException("Failed to append events to stream: " + streamId, e);
+        }
+    }
+
+    private void recordEventsAndManageSnapshot(String streamId, List<DomainEvent> events) {
+        if (!events.isEmpty()) {
+            try {
+                // Get the aggregate type from the first event's class name
+                var aggregateType = events.getFirst().getClass().getSimpleName()
+                        .replaceAll("Event$", "");
+
+                log.debug("Checking snapshot creation for stream {} of type {} after appending {} events",
+                        streamId, aggregateType, events.size());
+
+                // Load all events for this aggregate to reconstruct its current state
+                var allEvents = getEvents(streamId);
+                log.debug("Found {} total events for stream {}", allEvents.size(), streamId);
+
+                var aggregateClass = Class.forName(
+                        "ca.bazlur.eventsourcing.domain." +
+                                aggregateType.toLowerCase() + "." + aggregateType);
+
+                var aggregate = (AggregateRoot) aggregateClass.getConstructor(String.class)
+                        .newInstance(streamId);
+                aggregate.loadFromHistory(allEvents);
+
+                log.info("Reconstructed aggregate {} of type {} at version {}",
+                        streamId, aggregateType, aggregate.getVersion());
+
+                // Try to create a snapshot if needed
+                var snapshotCreated = snapshotService.createSnapshotIfNeeded(aggregate);
+                if (snapshotCreated) {
+                    log.info("Created new snapshot for aggregate {} of type {} at version {}",
+                            streamId, aggregateType, aggregate.getVersion());
+                } else {
+                    log.debug("No snapshot needed for aggregate {} of type {} at version {}",
+                            streamId, aggregateType, aggregate.getVersion());
+                }
+            } catch (Exception e) {
+                // Log but don't fail the event append operation if snapshot creation fails
+                log.warn("Failed to create snapshot for stream {} of type {} after appending {} events: {}",
+                        streamId, events.getFirst().getClass().getSimpleName(), events.size(),
+                        e.getMessage());
+                log.debug("Snapshot creation failure details", e);
+            }
         }
     }
 
@@ -215,6 +263,48 @@ public class JpaEventStore implements EventStore {
             return objectMapper.readValue(entity.getEventData(), DomainEvent.class);
         } catch (Exception e) {
             throw new RuntimeException("Failed to deserialize event: " + entity.getEventId(), e);
+        }
+    }
+
+    @Override
+    public <T extends AggregateRoot> Optional<T> loadFromLatestSnapshot(
+            String aggregateId, Class<T> aggregateClass) {
+        try {
+            // First try to load from snapshot
+            var snapshotAggregate = snapshotService.restoreFromLatestSnapshot(aggregateId, aggregateClass);
+
+            if (snapshotAggregate.isPresent()) {
+                var aggregate = snapshotAggregate.get();
+                // Apply any events that occurred after the snapshot
+                var events = getEvents(aggregateId, aggregate.getVersion());
+                aggregate.loadFromHistory(events);
+                return Optional.of(aggregate);
+            }
+
+            return Optional.empty();
+        } catch (Exception e) {
+            log.error("Failed to load aggregate from snapshot: {}", aggregateId, e);
+            throw new EventStoreException("Failed to load aggregate from snapshot: " + aggregateId, e);
+        }
+    }
+
+    @Override
+    public boolean createSnapshotIfNeeded(AggregateRoot aggregate) {
+        try {
+            return snapshotService.createSnapshotIfNeeded(aggregate);
+        } catch (Exception e) {
+            log.error("Failed to create snapshot for aggregate: {}", aggregate.getId(), e);
+            throw new EventStoreException("Failed to create snapshot for aggregate: " + aggregate.getId(), e);
+        }
+    }
+
+    @Override
+    public void createSnapshot(AggregateRoot aggregate) {
+        try {
+            snapshotService.createSnapshot(aggregate);
+        } catch (Exception e) {
+            log.error("Failed to create snapshot for aggregate: {}", aggregate.getId(), e);
+            throw new EventStoreException("Failed to create snapshot for aggregate: " + aggregate.getId(), e);
         }
     }
 

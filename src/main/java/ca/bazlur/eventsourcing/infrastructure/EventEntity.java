@@ -11,7 +11,10 @@ import java.time.Instant;
 @Setter
 @Getter
 @Entity
-@Table(name = "events")
+@Table(name = "events",
+    uniqueConstraints = @UniqueConstraint(
+        columnNames = {"stream_id", "version"},
+        name = "uk_events_stream_version"))
 public class EventEntity {
 
     // Getters and setters
